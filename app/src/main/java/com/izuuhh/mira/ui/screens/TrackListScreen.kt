@@ -36,9 +36,8 @@ import com.izuuhh.mira.ui.theme.Mira
 
 /** Search results, Liked songs and a single playlist share one layout: header, actions, filter, songs. */
 @Composable
-fun TrackListScreen(vm: MiraViewModel) {
+fun TrackListScreen(vm: MiraViewModel, page: Page) {
     val m = Mira.colors
-    val page = vm.page
     var filter by remember(page) { mutableStateOf("") }
     val shown = remember(vm.items, filter) {
         val t = filter.trim().lowercase()

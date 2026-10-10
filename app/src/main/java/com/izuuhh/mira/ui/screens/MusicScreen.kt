@@ -24,11 +24,12 @@ import com.izuuhh.mira.ui.theme.Mira
 
 /** The music pages: Home, Playlists, and the track lists (Search, Liked songs, one playlist). */
 @Composable
-fun MusicScreen(vm: MiraViewModel, openPlayer: () -> Unit, goSettings: () -> Unit) {
-    when (vm.page) {
+fun MusicScreen(vm: MiraViewModel, page: Page, openPlayer: () -> Unit, goSettings: () -> Unit) {
+    // The page is passed in, not read from vm, so a page that is sliding out keeps showing itself.
+    when (page) {
         Page.Home -> HomeScreen(vm, openPlayer, goSettings)
         Page.Playlists -> PlaylistsScreen(vm)
-        else -> TrackListScreen(vm)
+        else -> TrackListScreen(vm, page)
     }
 }
 

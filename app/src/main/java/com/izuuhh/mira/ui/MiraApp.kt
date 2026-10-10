@@ -7,7 +7,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.WifiOff
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.izuuhh.mira.SettingsViewModel
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -48,6 +53,7 @@ import com.izuuhh.mira.ui.theme.Mira
 @Composable
 fun MiraApp(vm: MiraViewModel, onEvent: (Event) -> Unit) {
     val m = Mira.colors
+    val settings: SettingsViewModel = viewModel()
     val snackbar = remember { SnackbarHostState() }
     var showPlayer by remember { mutableStateOf(false) }
     var showDevices by remember { mutableStateOf(false) }
@@ -78,9 +84,39 @@ fun MiraApp(vm: MiraViewModel, onEvent: (Event) -> Unit) {
             }
             Spacer(Modifier.height(8.dp))
             Box(Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(corner(20.dp))).background(m.panel)) {
-                when (vm.page) {
-                    Page.Settings -> SettingsScreen(vm)
-                    else -> MusicScreen(vm, openPlayer = { showPlayer = true }, goSettings = { vm.navigate(Page.Settings) })
+                // Pages slide sideways in the direction of their tab: to the right of the current one comes in from the right.
+                // Detail pages (a playlist, an album) count as just after the tab they belong to, so opening one moves forward.
+                val tabOrder = settings.tabOrder
+                fun rank(p: Page): Float = when (p) {
+                    Page.Playlist -> tabOrder.indexOf(Page.Playlists) + 0.5f
+                    Page.Album -> tabOrder.indexOf(Page.Search) + 0.5f
+                    else -> tabOrder.indexOf(p).toFloat()
+                }
+                AnimatedContent(
+                    vm.page, label = "page",
+                    transitionSpec = {
+                        val detail = { p: Page -> p == Page.Playlist || p == Page.Album }
+                        when {
+                            // Opening a playlist or album: it rises from below over the page it came from.
+                            detail(targetState) && !detail(initialState) ->
+                                (fadeIn(tween(240, delayMillis = 60)) + slideInVertically(tween(380, easing = FastOutSlowInEasing)) { h -> h / 5 }) togetherWith
+                                    fadeOut(tween(200)) 
+                            // Closing it: it sinks away and the page underneath is already there.
+                            detail(initialState) && !detail(targetState) ->
+                                (fadeIn(tween(260)) togetherWith
+                                    (fadeOut(tween(220)) + slideOutVertically(tween(320, easing = FastOutSlowInEasing)) { h -> h / 5 })).apply { targetContentZIndex = -1f }
+                            else -> {
+                                val forward = rank(targetState) >= rank(initialState)
+                                (fadeIn(tween(220, delayMillis = 80)) + slideInHorizontally(tween(340, easing = FastOutSlowInEasing)) { w -> if (forward) w / 8 else -w / 8 }) togetherWith
+                                    (fadeOut(tween(110)) + slideOutHorizontally(tween(240, easing = FastOutSlowInEasing)) { w -> if (forward) -w / 8 else w / 8 })
+                            }
+                        }.also { if (detail(targetState) && !detail(initialState)) it.targetContentZIndex = 1f }
+                    },
+                ) { page ->
+                    when (page) {
+                        Page.Settings -> SettingsScreen(vm)
+                        else -> MusicScreen(vm, page, openPlayer = { showPlayer = true }, goSettings = { vm.navigate(Page.Settings) })
+                    }
                 }
             }
             Spacer(Modifier.height(8.dp))
