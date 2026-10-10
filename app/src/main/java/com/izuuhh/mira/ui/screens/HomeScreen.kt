@@ -31,7 +31,6 @@ import com.izuuhh.mira.Page
 import com.izuuhh.mira.ui.components.Cover
 import com.izuuhh.mira.ui.components.ShapeArt
 import com.izuuhh.mira.ui.theme.Mira
-import java.util.Calendar
 
 private class Genre(val name: String, val query: String, val bg: Long, val ink: Long, val shape: Int)
 
@@ -90,33 +89,35 @@ private fun GenreCard(g: Genre, modifier: Modifier, onClick: () -> Unit) {
 private fun Hero(vm: MiraViewModel, openPlayer: () -> Unit, goSettings: () -> Unit) {
     val m = Mira.colors
     val pb = vm.playback
-    val hour = remember { Calendar.getInstance().get(Calendar.HOUR_OF_DAY) }
-    val greeting = when { hour < 5 -> "Good night"; hour < 12 -> "Good morning"; hour < 18 -> "Good afternoon"; else -> "Good evening" }
     // The decorative shape turns slowly while music plays.
     val spin = rememberInfiniteTransition(label = "spin")
     val angle by spin.animateFloat(0f, 360f, infiniteRepeatable(tween(40000, easing = LinearEasing), RepeatMode.Restart), label = "angle")
-    Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(corner(26.dp))).background(m.container).padding(start = 22.dp, top = 22.dp, bottom = 22.dp, end = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    // The text gets the full width under the artwork: beside it the title always had to wrap.
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(corner(26.dp))).background(m.container).padding(22.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(if (pb != null) (if (pb.playing) "NOW PLAYING" else "PAUSED") else greeting.uppercase(), color = m.primary, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.8.sp)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
             Text(
-                pb?.track?.name ?: if (!vm.connected) "Connect Spotify to get started." else "$greeting.",
-                color = m.text, fontSize = 26.sp, fontWeight = FontWeight.Bold, maxLines = 3, overflow = TextOverflow.Ellipsis, lineHeight = 29.sp,
+                if (pb != null) (if (pb.playing) "NOW PLAYING" else "PAUSED") else "NOT PLAYING",
+                color = m.primary, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.8.sp, modifier = Modifier.weight(1f),
             )
-            Text(pb?.track?.subtitle ?: if (vm.connected) "Pick something from your library." else "", color = m.muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Spacer(Modifier.height(4.dp))
-            Button(
-                onClick = { if (pb != null) openPlayer() else if (vm.connected) vm.navigate(Page.Liked) else goSettings() },
-                colors = ButtonDefaults.buttonColors(containerColor = m.primary, contentColor = m.onPrimary),
-            ) { Text(if (pb != null) "Open player" else if (vm.connected) "Liked songs" else "Connect Spotify") }
+            // The shape turns slowly while music plays; the cover sits on top of it. It is drawn larger than the
+            // room it takes, so it spills over the corner of the card.
+            Box(Modifier.size(120.dp), Alignment.Center) {
+                ShapeArt(3, m.primary.copy(alpha = if (pb != null) 0.35f else 0.9f), 168.dp, modifier = Modifier.requiredSize(168.dp), turn = if (pb?.playing == true) angle else 0f)
+                if (pb != null) Cover(pb.track.cover, 100.dp, radius = 26.dp)
+            }
         }
-        Spacer(Modifier.width(6.dp))
-        // The shape turns slowly while music plays; the cover sits on top of it.
-        Box(Modifier.size(150.dp), Alignment.Center) {
-            ShapeArt(3, m.primary.copy(alpha = if (pb != null) 0.35f else 0.9f), 150.dp, turn = if (pb?.playing == true) angle else 0f)
-            if (pb != null) Cover(pb.track.cover, 102.dp, radius = 26.dp)
-        }
+        Text(
+            pb?.track?.name ?: if (!vm.connected) "Connect Spotify to get started." else "Nothing playing.",
+            color = m.text, fontSize = 28.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 32.sp,
+        )
+        Text(pb?.track?.subtitle ?: if (vm.connected) "Pick something from your library." else "", color = m.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Spacer(Modifier.height(4.dp))
+        Button(
+            onClick = { if (pb != null) openPlayer() else if (vm.connected) vm.navigate(Page.Liked) else goSettings() },
+            colors = ButtonDefaults.buttonColors(containerColor = m.primary, contentColor = m.onPrimary),
+        ) { Text(if (pb != null) "Open player" else if (vm.connected) "Liked songs" else "Connect Spotify", maxLines = 1, softWrap = false) }
     }
 }
