@@ -116,6 +116,7 @@ private fun StyleSection(vm: MiraViewModel) {
 
         SwitchRow("Wavy progress", "The progress line waves while music plays", vm.wavy) { vm.updateWavy(it) }
         SwitchRow("Blurred player background", "Album art blurred behind the player (Android 12+)", vm.blurBackground) { vm.updateBlurBackground(it) }
+        SwitchRow("Lyrics", "Fetched from lrclib.net, which receives the song and artist name", vm.lyricsEnabled) { vm.updateLyrics(it) }
         SwitchRow("Genre shortcuts", "Show the genre cards on Home", vm.showGenres) { vm.updateShowGenres(it) }
     }
 }

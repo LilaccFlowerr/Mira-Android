@@ -19,6 +19,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.BlurredEdgeTreatment
@@ -62,12 +63,23 @@ fun NowPlaying(vm: MiraViewModel, onClose: () -> Unit, onDevices: () -> Unit) {
         Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars).padding(20.dp).clickable(enabled = false) {},
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Row(Modifier.fillMaxWidth()) { RoundButton(Icons.Rounded.KeyboardArrowDown, "Close", onClose, selected = true) }
-        Spacer(Modifier.weight(1f))
-        AnimatedContent(
-            targetState = pb?.track?.cover, transitionSpec = { fadeIn(tween(300)) togetherWith fadeOut(tween(300)) }, label = "cover-art",
-            modifier = Modifier.graphicsLayer { scaleX = coverScale; scaleY = coverScale },
-        ) { cover -> Cover(cover, 300.dp, radius = 32.dp) }
+        var showLyrics by rememberSaveable { mutableStateOf(false) }
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            RoundButton(Icons.Rounded.KeyboardArrowDown, "Close", onClose, selected = true)
+            Spacer(Modifier.weight(1f))
+            if (vm.lyricsEnabled) RoundButton(Icons.Rounded.Lyrics, "Lyrics", { showLyrics = !showLyrics }, selected = showLyrics, enabled = pb != null)
+        }
+        val track = pb?.track
+        LaunchedEffect(showLyrics, track?.uri) { if (showLyrics && track != null) vm.loadLyrics(track) }
+        if (showLyrics && vm.lyricsEnabled) {
+            LyricsPanel(vm, positionMs = { pb?.position(clock.value) ?: 0 }, modifier = Modifier.weight(1f).fillMaxWidth())
+        } else {
+            Spacer(Modifier.weight(1f))
+            AnimatedContent(
+                targetState = pb?.track?.cover, transitionSpec = { fadeIn(tween(300)) togetherWith fadeOut(tween(300)) }, label = "cover-art",
+                modifier = Modifier.graphicsLayer { scaleX = coverScale; scaleY = coverScale },
+            ) { cover -> Cover(cover, 300.dp, radius = 32.dp) }
+        }
         Spacer(Modifier.height(24.dp))
         Text(pb?.track?.name ?: "Nothing playing", color = m.text, fontSize = 24.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
         Text(pb?.track?.subtitle ?: "Choose a song to start", color = m.muted, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -108,7 +120,7 @@ fun NowPlaying(vm: MiraViewModel, onClose: () -> Unit, onDevices: () -> Unit) {
             RoundButton(Icons.Rounded.Devices, "Devices", onDevices, size = 40.dp)
         }
         pb?.deviceName?.takeIf { it.isNotEmpty() }?.let { Text("Playing on $it", color = m.primary, fontSize = 12.sp) }
-        Spacer(Modifier.weight(1f))
+        if (!(showLyrics && vm.lyricsEnabled)) Spacer(Modifier.weight(1f))
     }
     }
 }

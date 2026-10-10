@@ -49,4 +49,7 @@ class Prefs(context: Context) {
     var recentSearches: List<String>
         get() = (sp.getString("recentSearches", "") ?: "").split('\n').filter { it.isNotBlank() }
         set(v) = sp.edit().putString("recentSearches", v.take(8).joinToString("\n")).apply()
+    var lyrics: Boolean
+        get() = sp.getBoolean("lyrics", true)
+        set(v) = sp.edit().putBoolean("lyrics", v).apply()
 }

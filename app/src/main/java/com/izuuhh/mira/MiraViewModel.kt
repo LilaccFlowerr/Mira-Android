@@ -59,6 +59,10 @@ class MiraViewModel(app: Application) : AndroidViewModel(app) {
     var blurBackground by mutableStateOf(prefs.blurBackground); private set
     var showGenres by mutableStateOf(prefs.showGenres); private set
     var online by mutableStateOf(true); private set
+    var lyricsEnabled by mutableStateOf(prefs.lyrics); private set
+    var lyrics by mutableStateOf<LyricsState>(LyricsState.Idle); private set
+    private val lyricsClient = LyricsClient(http)
+    private var lyricsUri: String? = null
 
     private val events = Channel<Event>(Channel.BUFFERED)
     val eventFlow = events.receiveAsFlow()
@@ -592,6 +596,18 @@ class MiraViewModel(app: Application) : AndroidViewModel(app) {
     fun updateWavy(v: Boolean) { wavy = v; prefs.wavy = v }
     fun updateBlurBackground(v: Boolean) { blurBackground = v; prefs.blurBackground = v }
     fun updateShowGenres(v: Boolean) { showGenres = v; prefs.showGenres = v }
+    fun updateLyrics(v: Boolean) { lyricsEnabled = v; prefs.lyrics = v; if (!v) { lyrics = LyricsState.Idle; lyricsUri = null } }
+
+    /** Loads the lyrics of [track] once; asking again for the same song does nothing. */
+    fun loadLyrics(track: Track) {
+        if (!lyricsEnabled || track.type != "track" || (lyricsUri == track.uri && lyrics !is LyricsState.Failed)) return
+        lyricsUri = track.uri
+        lyrics = LyricsState.Loading
+        viewModelScope.launch {
+            val result = lyricsClient.fetch(track.name, track.subtitle.substringBefore(", "), track.album, track.durationMs)
+            if (lyricsUri == track.uri) lyrics = result
+        }
+    }
 
     private companion object { val ID = Regex("^[A-Za-z0-9]+$") }
 }

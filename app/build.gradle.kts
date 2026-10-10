@@ -13,8 +13,9 @@ android {
         applicationId = "com.izuuhh.mira"
         minSdk = 26
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0"
+        // CI passes the release tag: -PversionName=0.1.0 -PversionCode=100
+        versionCode = (findProperty("versionCode") as String?)?.toInt() ?: 1
+        versionName = (findProperty("versionName") as String?) ?: "1.0"
         // The Spotify auth library declares a redirect activity; sign-in goes through the Spotify app, so these are never used.
         manifestPlaceholders["redirectSchemeName"] = "miraauth"
         manifestPlaceholders["redirectHostName"] = "unused"
@@ -22,12 +23,23 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // Release signing comes from the environment so no key ever lives in the repository.
+    signingConfigs {
+        System.getenv("MIRA_KEYSTORE")?.let { path ->
+            create("release") {
+                storeFile = file(path)
+                storePassword = System.getenv("MIRA_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("MIRA_KEY_ALIAS") ?: "mira"
+                keyPassword = System.getenv("MIRA_KEYSTORE_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            optimization {
-                enable = true
-                packageScope = setOf("androidx.**", "kotlin.**", "kotlinx.**")
-            }
+            signingConfigs.findByName("release")?.let { signingConfig = it }
+            // R8 broke class access in kotlin.text (IllegalAccessError at start-up), and the app is small anyway.
+            optimization { enable = false }
         }
     }
     compileOptions {

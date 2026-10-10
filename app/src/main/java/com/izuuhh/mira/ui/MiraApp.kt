@@ -1,12 +1,14 @@
 package com.izuuhh.mira.ui
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Animatable
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.WifiOff
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
@@ -75,20 +77,9 @@ fun MiraApp(vm: MiraViewModel, onEvent: (Event) -> Unit) {
             }
             Spacer(Modifier.height(8.dp))
             Box(Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(corner(20.dp))).background(m.panel)) {
-                AnimatedContent(
-                    targetState = vm.page,
-                    transitionSpec = {
-                        // Going deeper (a playlist) slides in; everything else cross-fades with a small lift.
-                        val deeper = targetState == Page.Playlist
-                        (fadeIn(tween(260, delayMillis = 60)) + slideInVertically(tween(300)) { if (deeper) it / 12 else it / 24 }) togetherWith
-                            fadeOut(tween(140))
-                    },
-                    label = "page",
-                ) { page ->
-                    when (page) {
-                        Page.Settings -> SettingsScreen(vm)
-                        else -> MusicScreen(vm, openPlayer = { showPlayer = true }, goSettings = { vm.navigate(Page.Settings) })
-                    }
+                when (vm.page) {
+                    Page.Settings -> SettingsScreen(vm)
+                    else -> MusicScreen(vm, openPlayer = { showPlayer = true }, goSettings = { vm.navigate(Page.Settings) })
                 }
             }
             Spacer(Modifier.height(8.dp))
