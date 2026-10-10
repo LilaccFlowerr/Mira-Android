@@ -295,6 +295,37 @@ class MiraViewModel(app: Application) : AndroidViewModel(app) {
     /** Tries the last list request again, after an error. */
     fun retry() { lastLoad?.invoke() ?: refreshPlayer() }
 
+    var songInfo by mutableStateOf<SongInfo?>(null); private set
+
+    /** Fetches album, year and more songs by the first artist for the info sheet. */
+    fun loadSongInfo(track: Track) {
+        if (!track.id.matches(ID)) return
+        songInfo = SongInfo(track)
+        viewModelScope.launch {
+            val json = (api.call("GET", "/tracks/${track.id}") as? ApiResult.Ok)?.json
+            val album = json?.optJSONObject("album")
+            val artist = json?.optJSONArray("artists")?.optJSONObject(0)
+            val artistName = artist?.optString("name").orEmpty().ifEmpty { track.subtitle.substringBefore(", ") }
+            val more = if (artistName.isEmpty()) emptyList() else {
+                val q = java.net.URLEncoder.encode("artist:\"$artistName\"", "UTF-8")
+                val items = (api.call("GET", "/search?q=$q&type=track&limit=10") as? ApiResult.Ok)?.json
+                    ?.optJSONObject("tracks")?.optJSONArray("items")
+                if (items == null) emptyList() else (0 until items.length()).mapNotNull { i -> items.optJSONObject(i)?.let(SpotifyApi::parseTrack) }
+                    .filter { it.uri != track.uri }.take(6)
+            }
+            // Ignore the answer if the sheet was closed or another song's info was asked for meanwhile.
+            if (songInfo?.track?.uri != track.uri) return@launch
+            songInfo = SongInfo(
+                track = track, loading = false,
+                album = album?.let(SpotifyApi::parseTrack), releaseDate = album?.optString("release_date").orEmpty(),
+                albumSongs = album?.optInt("total_tracks") ?: 0,
+                artist = artist?.let(SpotifyApi::parseTrack), artistName = artistName, more = more,
+            )
+        }
+    }
+
+    fun closeSongInfo() { songInfo = null }
+
     /** Opens a Spotify web link (only open.spotify.com). */
     fun openSpotify(url: String) {
         if (url.startsWith("https://open.spotify.com/")) events.trySend(Event.OpenUrl(url))

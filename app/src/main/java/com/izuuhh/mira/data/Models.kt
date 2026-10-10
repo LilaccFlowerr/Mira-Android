@@ -45,3 +45,15 @@ data class Playback(
 }
 
 enum class Collection { None, Search, Library, Playlists, Playlist }
+
+/** Extra details for the song that is playing: its album, release year and more songs by the artist. */
+data class SongInfo(
+    val track: Track,
+    val loading: Boolean = true,
+    val album: Track? = null,
+    val releaseDate: String = "",
+    val albumSongs: Int = 0,
+    val artist: Track? = null,
+    val artistName: String = "",
+    val more: List<Track> = emptyList(),
+)

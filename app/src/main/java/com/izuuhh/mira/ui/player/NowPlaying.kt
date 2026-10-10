@@ -1,5 +1,14 @@
 package com.izuuhh.mira.ui.player
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.ui.layout.onSizeChanged
+import kotlinx.coroutines.launch
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.izuuhh.mira.SettingsViewModel
 import androidx.compose.animation.AnimatedContent
@@ -52,7 +61,26 @@ fun NowPlaying(vm: MiraViewModel, onClose: () -> Unit, onDevices: () -> Unit) {
     // The cover breathes when you pause or play.
     val coverScale by animateFloatAsState(if (pb?.playing == false) 0.88f else 1f, spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessLow), label = "cover")
 
-    Box(Modifier.fillMaxSize().background(m.base)) {
+    // Drag down to close: the screen follows the finger, then either slides away or springs back.
+    val scope = rememberCoroutineScope()
+    val drag = remember { Animatable(0f) }
+    var screenHeight by remember { mutableFloatStateOf(0f) }
+    val dragState = rememberDraggableState { delta -> scope.launch { drag.snapTo((drag.value + delta).coerceAtLeast(0f)) } }
+
+    Box(
+        Modifier.fillMaxSize().onSizeChanged { screenHeight = it.height.toFloat() }
+            .graphicsLayer { translationY = drag.value }
+            .draggable(
+                dragState, Orientation.Vertical,
+                onDragStopped = { velocity ->
+                    if (drag.value > screenHeight * 0.22f || velocity > 1400f) {
+                        drag.animateTo(screenHeight, tween(180))
+                        onClose()
+                    } else drag.animateTo(0f, spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMedium))
+                },
+            )
+            .background(m.base),
+    ) {
     // Blurred album art behind everything; a scrim keeps the text readable in both themes.
     val cover = pb?.track?.cover
     if (settings.blurBackground && cover != null && android.os.Build.VERSION.SDK_INT >= 31) {
@@ -84,7 +112,13 @@ fun NowPlaying(vm: MiraViewModel, onClose: () -> Unit, onDevices: () -> Unit) {
             ) { cover -> Cover(cover, 300.dp, radius = 32.dp) }
         }
         Spacer(Modifier.height(24.dp))
-        Text(pb?.track?.name ?: "Nothing playing", color = m.text, fontSize = 24.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+        var showInfo by remember { mutableStateOf(false) }
+        val infoTrack = pb?.track?.takeIf { it.type == "track" }
+        Text(
+            pb?.track?.name ?: "Nothing playing", color = m.text, fontSize = 24.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
+            modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable(enabled = infoTrack != null) { showInfo = true },
+        )
+        if (showInfo && infoTrack != null) SongInfoSheet(vm, infoTrack, onClose = { showInfo = false }, onNavigate = onClose)
         Text(pb?.track?.subtitle ?: "Choose a song to start", color = m.muted, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         pb?.track?.album?.takeIf { it.isNotEmpty() }?.let { Text(it, color = m.muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
         Spacer(Modifier.height(16.dp))
