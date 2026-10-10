@@ -1,5 +1,7 @@
 package com.izuuhh.mira.ui.components
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -20,6 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.izuuhh.mira.MiraViewModel
+import com.izuuhh.mira.ui.theme.corner
 import com.izuuhh.mira.Page
 import com.izuuhh.mira.ui.theme.Mira
 
@@ -34,17 +37,17 @@ fun NavBar(vm: MiraViewModel) {
         Triple(Page.Settings, "Settings", Icons.Rounded.Settings),
     )
     val current = if (vm.page == Page.Playlist) Page.Playlists else vm.page
-    Row(Modifier.fillMaxWidth().height(72.dp).clip(RoundedCornerShape(24.dp)).background(m.panel).padding(6.dp)) {
+    Row(Modifier.fillMaxWidth().height(72.dp).clip(RoundedCornerShape(corner(24.dp))).background(m.panel).padding(6.dp)) {
         items.forEach { (page, label, icon) ->
             val active = page == current
             Column(
-                Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(16.dp)).clickable {
+                Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(corner(16.dp))).clickable {
                     if (page == Page.Search) { vm.navigate(Page.Search); if (vm.searchTerm.isNotBlank()) vm.search(vm.searchTerm) } else vm.navigate(page)
                 },
                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
             ) {
                 Box(
-                    Modifier.width(if (active) 56.dp else 40.dp).height(32.dp).clip(RoundedCornerShape(16.dp)).background(if (active) m.container else androidx.compose.ui.graphics.Color.Transparent),
+                    Modifier.width(animateDpAsState(if (active) 56.dp else 40.dp, label = "pill").value).height(32.dp).clip(RoundedCornerShape(corner(16.dp))).background(animateColorAsState(if (active) m.container else androidx.compose.ui.graphics.Color.Transparent, label = "pill-colour").value),
                     contentAlignment = Alignment.Center,
                 ) { Icon(icon, label, tint = if (active) m.primary else m.muted, modifier = Modifier.size(22.dp)) }
                 Text(label, color = if (active) m.text else m.muted, fontSize = 11.sp, fontWeight = if (active) FontWeight.Bold else FontWeight.Normal)

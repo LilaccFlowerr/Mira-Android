@@ -23,6 +23,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.izuuhh.mira.MiraViewModel
+import com.izuuhh.mira.ui.theme.corner
 import com.izuuhh.mira.ui.theme.Mira
 
 @Composable
@@ -32,7 +33,7 @@ fun SearchBar(vm: MiraViewModel) {
     Row(Modifier.fillMaxWidth().height(52.dp), verticalAlignment = Alignment.CenterVertically) {
         Text("mira", color = m.text, fontSize = 24.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 8.dp, end = 12.dp))
         Row(
-            Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(22.dp)).background(m.elevated).padding(horizontal = 14.dp),
+            Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(corner(22.dp))).background(m.elevated).padding(horizontal = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(Icons.Rounded.Search, null, tint = m.muted)

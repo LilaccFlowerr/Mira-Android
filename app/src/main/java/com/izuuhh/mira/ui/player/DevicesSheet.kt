@@ -18,6 +18,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.izuuhh.mira.MiraViewModel
+import com.izuuhh.mira.ui.theme.corner
 import com.izuuhh.mira.ui.theme.Mira
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -35,7 +36,7 @@ fun DevicesSheet(vm: MiraViewModel, onClose: () -> Unit) {
             vm.devices.forEach { d ->
                 val selected = d.id == (vm.playback?.deviceId?.takeIf { it.isNotEmpty() } ?: vm.deviceId)
                 Row(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(if (selected) m.container else androidx.compose.ui.graphics.Color.Transparent)
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(corner(14.dp))).background(if (selected) m.container else androidx.compose.ui.graphics.Color.Transparent)
                         .clickable { vm.selectDevice(d.id); onClose() }.padding(14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {

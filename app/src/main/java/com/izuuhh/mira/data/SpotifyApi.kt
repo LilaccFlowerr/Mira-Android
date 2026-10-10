@@ -67,11 +67,11 @@ class SpotifyApi(private val http: OkHttpClient, private val auth: Auth) {
 
         fun parseTrack(o: JSONObject): Track? {
             val type = o.optString("type")
-            if (o.optBoolean("is_local") || (type != "track" && type != "playlist")) return null
+            if (o.optBoolean("is_local") || type !in setOf("track", "playlist", "album", "artist")) return null
             val names = o.optJSONArray("artists").names()
             val album = o.optJSONObject("album")
-            val subtitle = names.ifEmpty { listOfNotNull(o.optJSONObject("owner")?.optString("display_name")?.takeIf { it.isNotEmpty() }) }
-            val images = (if (type == "playlist") o else album)?.optJSONArray("images")
+            val subtitle = if (type == "artist") listOf("Artist") else names.ifEmpty { listOfNotNull(o.optJSONObject("owner")?.optString("display_name")?.takeIf { it.isNotEmpty() }) }
+            val images = (if (type == "track") album else o)?.optJSONArray("images")
             val image = images?.optJSONObject(0)?.optString("url")
             return Track(
                 id = o.optString("id"),

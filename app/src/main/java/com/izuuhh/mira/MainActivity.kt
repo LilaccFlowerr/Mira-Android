@@ -9,6 +9,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.DisposableEffect
 import androidx.browser.customtabs.CustomTabsIntent
 import com.izuuhh.mira.data.Auth
 import com.izuuhh.mira.ui.MiraApp
@@ -27,14 +29,21 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge(
-            statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
-            navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
-        )
         handle(intent)
         vm.host = this
         setContent {
-            MiraTheme(dark = vm.dark, accent = vm.accent) {
+            val dark = when (vm.themeMode) { 1 -> false; 2 -> true; else -> isSystemInDarkTheme() }
+            // Status and navigation bar icons follow the theme.
+            DisposableEffect(dark) {
+                val bar = if (dark) SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+                else SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT)
+                enableEdgeToEdge(statusBarStyle = bar, navigationBarStyle = bar)
+                onDispose {}
+            }
+            MiraTheme(
+                dark = dark, hue = vm.hue, amoled = vm.amoled, dynamic = vm.dynamicColor,
+                corners = vm.corners, font = vm.font, textSize = vm.textSize, wavy = vm.wavy,
+            ) {
                 MiraApp(vm, onEvent = ::onEvent)
             }
         }
@@ -69,6 +78,7 @@ class MainActivity : ComponentActivity() {
                     .build()
                 consent.launch(AuthorizationClient.createLoginActivityIntent(this, request))
             }
+            is Event.OpenUrl -> runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(e.url))) }
             is Event.Message -> {}
         }
     }

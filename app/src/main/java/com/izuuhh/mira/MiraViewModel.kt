@@ -4,6 +4,8 @@ import android.app.Application
 import android.net.Uri
 import android.os.SystemClock
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
@@ -19,6 +21,7 @@ import okhttp3.OkHttpClient
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
+import kotlin.math.roundToInt
 
 class MiraViewModel(app: Application) : AndroidViewModel(app) {
     val prefs = Prefs(app)
@@ -37,6 +40,7 @@ class MiraViewModel(app: Application) : AndroidViewModel(app) {
     var page by mutableStateOf(Page.Home); private set
     var busy by mutableStateOf(false); private set
     var info by mutableStateOf(""); private set
+    var loadError by mutableStateOf(false); private set
     var items by mutableStateOf<List<Track>>(emptyList()); private set
     var playlists by mutableStateOf<List<Track>>(emptyList()); private set
     var selectedPlaylist by mutableStateOf<Track?>(null); private set
@@ -44,8 +48,17 @@ class MiraViewModel(app: Application) : AndroidViewModel(app) {
     var playback by mutableStateOf<Playback?>(null); private set
     var deviceId by mutableStateOf(""); private set
     var searchTerm by mutableStateOf("")
-    var dark by mutableStateOf(prefs.dark); private set
-    var accent by mutableStateOf(prefs.accent); private set
+    var themeMode by mutableIntStateOf(prefs.themeMode); private set
+    var hue by mutableIntStateOf(prefs.hue); private set
+    var dynamicColor by mutableStateOf(prefs.dynamicColor); private set
+    var amoled by mutableStateOf(prefs.amoled); private set
+    var corners by mutableIntStateOf(prefs.corners); private set
+    var font by mutableIntStateOf(prefs.font); private set
+    var textSize by mutableIntStateOf(prefs.textSize); private set
+    var wavy by mutableStateOf(prefs.wavy); private set
+    var blurBackground by mutableStateOf(prefs.blurBackground); private set
+    var showGenres by mutableStateOf(prefs.showGenres); private set
+    var online by mutableStateOf(true); private set
 
     private val events = Channel<Event>(Channel.BUFFERED)
     val eventFlow = events.receiveAsFlow()
@@ -56,7 +69,57 @@ class MiraViewModel(app: Application) : AndroidViewModel(app) {
     private var pendingExpiry: Job? = null
     private var userId: String? = null
 
-    init { if (connected) onConnected() }
+    // --- Phone volume ----------------------------------------------------------------------------
+
+    private val audio = app.getSystemService(android.media.AudioManager::class.java)
+
+    /** The phone's own media volume, 0..100. Used when Spotify cannot be volume-controlled remotely. */
+    var systemVolume by mutableFloatStateOf(readSystemVolume()); private set
+
+    private fun readSystemVolume(): Float {
+        val max = audio.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+        return audio.getStreamVolume(android.media.AudioManager.STREAM_MUSIC) * 100f / max
+    }
+
+    fun refreshSystemVolume() { systemVolume = readSystemVolume() }
+
+    fun changeSystemVolume(percent: Float) {
+        val max = audio.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)
+        audio.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, (percent / 100f * max).roundToInt().coerceIn(0, max), 0)
+        systemVolume = readSystemVolume()
+    }
+
+    init {
+        // The volume buttons on the phone move the slider too.
+        androidx.core.content.ContextCompat.registerReceiver(
+            app,
+            object : android.content.BroadcastReceiver() {
+                override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) { refreshSystemVolume() }
+            },
+            android.content.IntentFilter("android.media.VOLUME_CHANGED_ACTION"),
+            androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+        watchNetwork()
+        if (connected) onConnected()
+    }
+
+    /** Tracks whether the phone has internet, so the app can say so and recover by itself. */
+    private fun watchNetwork() {
+        val cm = getApplication<Application>().getSystemService(android.net.ConnectivityManager::class.java) ?: return
+        online = cm.getNetworkCapabilities(cm.activeNetwork)?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+        cm.registerDefaultNetworkCallback(object : android.net.ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: android.net.Network) {
+                val wasOffline = !online
+                online = true
+                if (wasOffline && connected) {
+                    refreshPlayer(true)
+                    if (loadError) retry()
+                }
+            }
+
+            override fun onLost(network: android.net.Network) { online = false }
+        })
+    }
 
     // --- Sign-in -------------------------------------------------------------------------------
 
@@ -121,16 +184,96 @@ class MiraViewModel(app: Application) : AndroidViewModel(app) {
     /** Back button: returns true when the app handled it. */
     fun back(): Boolean = when (page) {
         Page.Playlist -> { navigate(Page.Playlists); true }
+        Page.Album -> { val back = lastSearchRun; if (back != null) back() else page = Page.Home; true }
         Page.Home -> false
         else -> { page = Page.Home; true }
     }
 
+    // --- Search --------------------------------------------------------------------------------
+
+    var searchArtists by mutableStateOf<List<Track>>(emptyList()); private set
+    var searchAlbums by mutableStateOf<List<Track>>(emptyList()); private set
+    var searchPlaylists by mutableStateOf<List<Track>>(emptyList()); private set
+    var recents by mutableStateOf(prefs.recentSearches); private set
+    var selectedAlbum by mutableStateOf<Track?>(null); private set
+    private var searchQuery = ""
+    private var lastSearchRun: (() -> Unit)? = null
+    private var searchOffset = 0
+
+    /** Searches songs, artists, albums and playlists at once. */
     fun search(term: String) {
         searchTerm = term
-        if (term.isBlank()) return
+        if (term.isBlank()) { page = Page.Search; return }
+        rememberSearch(term.trim())
+        runSearch(term.trim(), "track,artist,album,playlist")
+    }
+
+    /** All songs and albums by one artist. */
+    fun searchArtist(artist: Track) {
+        searchTerm = artist.name
+        runSearch("artist:\"${artist.name}\"", "track,album")
+    }
+
+    private fun runSearch(query: String, types: String) {
         page = Page.Search
-        val q = java.net.URLEncoder.encode(term.trim(), "UTF-8")
-        load("/search?q=$q&type=track&limit=20", key = "tracks")
+        searchQuery = query
+        lastSearchRun = { runSearch(query, types) }
+        searchOffset = 0
+        val q = java.net.URLEncoder.encode(query, "UTF-8")
+        loadJob?.cancel()
+        lastLoad = { runSearch(query, types) }
+        loadJob = viewModelScope.launch {
+            busy = true; loadError = false
+            items = emptyList(); nextUrl = null
+            searchArtists = emptyList(); searchAlbums = emptyList(); searchPlaylists = emptyList()
+            when (val r = api.call("GET", "/search?q=$q&type=$types&limit=10")) {
+                is ApiResult.Err -> { info = r.message; loadError = true }
+                is ApiResult.Ok -> {
+                    fun list(key: String) = r.json.optJSONObject(key)?.optJSONArray("items")?.let { a ->
+                        (0 until a.length()).mapNotNull { i -> a.optJSONObject(i)?.let(SpotifyApi::parseTrack) }
+                    } ?: emptyList()
+                    items = list("tracks"); searchArtists = list("artists"); searchAlbums = list("albums"); searchPlaylists = list("playlists")
+                    searchOffset = items.size
+                    hasMoreSongs = r.json.optJSONObject("tracks")?.optString("next").let { !it.isNullOrEmpty() && it != "null" }
+                    info = if (items.isEmpty() && searchAlbums.isEmpty() && searchArtists.isEmpty() && searchPlaylists.isEmpty()) "Nothing found for ‘$query’." else ""
+                }
+            }
+            busy = false
+        }
+    }
+
+    private var hasMoreSongs = false
+
+    private fun loadMoreSongs() {
+        viewModelScope.launch {
+            busy = true
+            val q = java.net.URLEncoder.encode(searchQuery, "UTF-8")
+            val r = api.call("GET", "/search?q=$q&type=track&limit=10&offset=$searchOffset")
+            if (r is ApiResult.Ok) {
+                val tracks = r.json.optJSONObject("tracks")
+                val a = tracks?.optJSONArray("items")
+                val more = if (a == null) emptyList() else (0 until a.length()).mapNotNull { i -> a.optJSONObject(i)?.let(SpotifyApi::parseTrack) }
+                items = items + more
+                searchOffset += more.size
+                hasMoreSongs = more.isNotEmpty() && tracks?.optString("next").let { !it.isNullOrEmpty() && it != "null" }
+            } else if (r is ApiResult.Err) events.trySend(Event.Message(r.message))
+            busy = false
+        }
+    }
+
+    private fun rememberSearch(term: String) {
+        val list = listOf(term) + prefs.recentSearches.filterNot { it.equals(term, ignoreCase = true) }
+        prefs.recentSearches = list
+        recents = prefs.recentSearches
+    }
+
+    fun clearRecents() { prefs.recentSearches = emptyList(); recents = emptyList() }
+
+    fun openAlbum(a: Track) {
+        if (!a.id.matches(ID)) return
+        selectedAlbum = a
+        page = Page.Album
+        load("/albums/${a.id}/tracks?limit=50", map = { it.copy(cover = a.cover, album = a.name) })
     }
 
     fun loadLibrary() = load("/me/tracks?limit=50")
@@ -142,29 +285,45 @@ class MiraViewModel(app: Application) : AndroidViewModel(app) {
         load("/playlists/${p.id}/items?limit=50")
     }
 
-    fun loadMore() { nextUrl?.let { load(it, append = true) } }
-    val hasMore get() = nextUrl != null
+    fun loadMore() {
+        if (page == Page.Search) { if (hasMoreSongs && !busy) loadMoreSongs() } else nextUrl?.let { load(it, append = true, map = albumMap()) }
+    }
+    val hasMore get() = if (page == Page.Search) hasMoreSongs else nextUrl != null
+
+    private fun albumMap(): ((Track) -> Track)? = selectedAlbum?.takeIf { page == Page.Album }?.let { a -> { t: Track -> t.copy(cover = a.cover, album = a.name) } }
 
     private var loadJob: Job? = null
-    private fun load(path: String, key: String? = null, append: Boolean = false, into: ((List<Track>) -> Unit)? = null) {
+    private var lastLoad: (() -> Unit)? = null
+
+    /** Tries the last list request again, after an error. */
+    fun retry() { lastLoad?.invoke() ?: refreshPlayer() }
+
+    /** Opens a Spotify web link (only open.spotify.com). */
+    fun openSpotify(url: String) {
+        if (url.startsWith("https://open.spotify.com/")) events.trySend(Event.OpenUrl(url))
+    }
+
+    private fun load(path: String, key: String? = null, append: Boolean = false, into: ((List<Track>) -> Unit)? = null, map: ((Track) -> Track)? = null) {
+        lastLoad = { load(path, key, append, into, map) }
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
             busy = true
             if (!append && into == null) { items = emptyList(); nextUrl = null }
             when (val r = api.call("GET", path)) {
-                is ApiResult.Err -> { info = r.message; busy = false }
+                is ApiResult.Err -> { info = r.message; loadError = true; busy = false }
                 is ApiResult.Ok -> {
                     val obj = if (key != null) r.json.optJSONObject(key) ?: JSONObject() else r.json
                     val arr = obj.optJSONArray("items") ?: JSONArray()
                     val parsed = (0 until arr.length()).mapNotNull { i ->
                         val o = arr.optJSONObject(i) ?: return@mapNotNull null
-                        SpotifyApi.parseTrack(o.optJSONObject("track") ?: o.optJSONObject("item") ?: o)
+                        SpotifyApi.parseTrack(o.optJSONObject("track") ?: o.optJSONObject("item") ?: o)?.let { t -> map?.invoke(t) ?: t }
                     }
                     if (into != null) into(parsed) else {
                         items = if (append) items + parsed else parsed
                         nextUrl = obj.optString("next").takeIf { it.isNotEmpty() && it != "null" }
                     }
                     info = if (parsed.isEmpty() && !append) "No results. Try a different selection." else ""
+                    loadError = false
                     busy = false
                 }
             }
@@ -297,12 +456,12 @@ class MiraViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun play(uri: String? = null) {
-        if (uri != null && !uri.matches(Regex("^spotify:(track|playlist):[A-Za-z0-9]+$"))) return
+        if (uri != null && !uri.matches(Regex("^spotify:(track|playlist|album|artist):[A-Za-z0-9]+$"))) return
         if (viaRemote({ play(uri) }) { p -> if (uri == null) p.resume() else p.play(uri) }) return
         val b = JSONObject()
         if (uri != null) {
-            if (!uri.matches(Regex("^spotify:(track|playlist):[A-Za-z0-9]+$"))) return
-            if (uri.startsWith("spotify:playlist:")) b.put("context_uri", uri) else b.put("uris", JSONArray().put(uri))
+            if (!uri.matches(Regex("^spotify:(track|playlist|album|artist):[A-Za-z0-9]+$"))) return
+            if (uri.startsWith("spotify:track:")) b.put("uris", JSONArray().put(uri)) else b.put("context_uri", uri)
         } else if (playback?.allows("resuming") == false) {
             events.trySend(Event.Message("Spotify does not allow resuming right now.")); return
         }
@@ -328,7 +487,7 @@ class MiraViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun playInContext(context: String, uri: String) {
-        if (!context.matches(Regex("^spotify:playlist:[A-Za-z0-9]+$"))) return
+        if (!context.matches(Regex("^spotify:(playlist|album):[A-Za-z0-9]+$"))) return
         val index = items.indexOfFirst { it.uri == uri }
         if (viaRemote({ playInContext(context, uri) }) { p ->
                 val start = p.play(context)
@@ -423,8 +582,16 @@ class MiraViewModel(app: Application) : AndroidViewModel(app) {
 
     // --- Settings ------------------------------------------------------------------------------
 
-    fun updateDark(v: Boolean) { dark = v; prefs.dark = v }
-    fun updateAccent(v: Int) { accent = v; prefs.accent = v }
+    fun updateThemeMode(v: Int) { themeMode = v; prefs.themeMode = v }
+    fun updateHue(v: Int) { hue = v; prefs.hue = v; if (dynamicColor) updateDynamic(false) }
+    fun updateDynamic(v: Boolean) { dynamicColor = v; prefs.dynamicColor = v }
+    fun updateAmoled(v: Boolean) { amoled = v; prefs.amoled = v }
+    fun updateCorners(v: Int) { corners = v; prefs.corners = v }
+    fun updateFont(v: Int) { font = v; prefs.font = v }
+    fun updateTextSize(v: Int) { textSize = v; prefs.textSize = v }
+    fun updateWavy(v: Boolean) { wavy = v; prefs.wavy = v }
+    fun updateBlurBackground(v: Boolean) { blurBackground = v; prefs.blurBackground = v }
+    fun updateShowGenres(v: Boolean) { showGenres = v; prefs.showGenres = v }
 
     private companion object { val ID = Regex("^[A-Za-z0-9]+$") }
 }
