@@ -18,6 +18,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 
 /** Mira's palette: surfaces, text and one accent. Everything is derived from a single hue. */
@@ -30,6 +36,21 @@ data class MiraColors(
 val LocalMira = staticCompositionLocalOf<MiraColors> { error("MiraTheme missing") }
 val LocalCornerScale = staticCompositionLocalOf { 1f }
 val LocalWavy = staticCompositionLocalOf { true }
+val LocalCardStyle = staticCompositionLocalOf { 0 }
+
+/**
+ * A card background in the user's card style: filled, outlined or attached. Attached cards of the bottom bars
+ * ([docked]) draw nothing themselves because MiraApp puts them in one shared block.
+ */
+@Composable
+fun Modifier.miraSurface(shape: Shape, color: Color, docked: Boolean = false): Modifier {
+    val m = Mira.colors
+    return when (LocalCardStyle.current) {
+        1 -> this.border(1.5.dp, m.muted.copy(alpha = 0.45f), shape).clip(shape)
+        2 -> if (docked) this else this.clip(shape).background(color)
+        else -> this.clip(shape).background(color)
+    }
+}
 
 /** A corner radius scaled by the user's "corners" setting. */
 @Composable
@@ -72,7 +93,7 @@ fun miraColors(dark: Boolean, hue: Int, amoled: Boolean): MiraColors {
 @Composable
 fun MiraTheme(
     dark: Boolean, hue: Int, amoled: Boolean, dynamic: Boolean,
-    corners: Int, font: Int, textSize: Int, wavy: Boolean,
+    corners: Int, font: Int, textSize: Int, wavy: Boolean, cardStyle: Int = 0,
     content: @Composable () -> Unit,
 ) {
     val context = LocalContext.current
@@ -112,6 +133,7 @@ fun MiraTheme(
         LocalMira provides m,
         LocalCornerScale provides when (corners) { 0 -> 0.3f; 2 -> 1.5f; else -> 1f },
         LocalWavy provides wavy,
+        LocalCardStyle provides cardStyle,
         LocalDensity provides scaledDensity,
     ) {
         MaterialTheme(colorScheme = scheme, typography = typography) {

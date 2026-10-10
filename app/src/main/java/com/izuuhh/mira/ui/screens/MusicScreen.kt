@@ -1,5 +1,6 @@
 package com.izuuhh.mira.ui.screens
 
+import com.izuuhh.mira.ui.theme.miraSurface
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -41,7 +42,7 @@ fun SectionTitle(text: String, modifier: Modifier = Modifier) {
 fun StatusCard(title: String, body: String, onRetry: (() -> Unit)? = null, error: Boolean = false) {
     val m = Mira.colors
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(corner(22.dp))).background(m.elevated).padding(20.dp),
+        Modifier.fillMaxWidth().miraSurface(RoundedCornerShape(corner(22.dp)), m.elevated).padding(20.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         ShapeArt(1, if (error) m.error else m.primary, 52.dp)

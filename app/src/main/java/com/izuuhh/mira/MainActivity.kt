@@ -44,7 +44,7 @@ class MainActivity : ComponentActivity() {
             }
             MiraTheme(
                 dark = dark, hue = settings.hue, amoled = settings.amoled, dynamic = settings.dynamicColor,
-                corners = settings.corners, font = settings.font, textSize = settings.textSize, wavy = settings.wavy,
+                corners = settings.corners, font = settings.font, textSize = settings.textSize, wavy = settings.wavy, cardStyle = settings.cardStyle,
             ) {
                 MiraApp(vm, onEvent = ::onEvent)
             }

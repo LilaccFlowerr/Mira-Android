@@ -1,5 +1,6 @@
 package com.izuuhh.mira.ui.screens
 
+import com.izuuhh.mira.ui.theme.miraSurface
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.izuuhh.mira.SettingsViewModel
 import androidx.compose.animation.core.LinearEasing
@@ -94,7 +95,7 @@ private fun Hero(vm: MiraViewModel, openPlayer: () -> Unit, goSettings: () -> Un
     val angle by spin.animateFloat(0f, 360f, infiniteRepeatable(tween(40000, easing = LinearEasing), RepeatMode.Restart), label = "angle")
     // The text gets the full width under the artwork: beside it the title always had to wrap.
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(corner(26.dp))).background(m.container).padding(22.dp),
+        Modifier.fillMaxWidth().miraSurface(RoundedCornerShape(corner(26.dp)), m.container).padding(22.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {

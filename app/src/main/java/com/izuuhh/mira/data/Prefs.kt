@@ -56,4 +56,23 @@ class Prefs(context: Context) {
     var closeSpotify: Boolean
         get() = sp.getBoolean("closeSpotify", false)
         set(v) = sp.edit().putBoolean("closeSpotify", v).apply()
+    /** 0 = filled, 1 = outlined, 2 = attached. */
+    var cardStyle: Int
+        get() = sp.getInt("cardStyle", 0)
+        set(v) = sp.edit().putInt("cardStyle", v.coerceIn(0, 2)).apply()
+    /** 0 = always, 1 = only on the active tab, 2 = never. */
+    var navLabels: Int
+        get() = sp.getInt("navLabels", 0)
+        set(v) = sp.edit().putInt("navLabels", v.coerceIn(0, 2)).apply()
+    /** 0 = pill, 1 = circle, 2 = underline. */
+    var navIndicator: Int
+        get() = sp.getInt("navIndicator", 0)
+        set(v) = sp.edit().putInt("navIndicator", v.coerceIn(0, 2)).apply()
+    /** Tab order as page names, comma separated. */
+    var tabOrder: String
+        get() = sp.getString("tabOrder", "") ?: ""
+        set(v) = sp.edit().putString("tabOrder", v).apply()
+    var tabsHidden: String
+        get() = sp.getString("tabsHidden", "") ?: ""
+        set(v) = sp.edit().putString("tabsHidden", v).apply()
 }

@@ -42,6 +42,7 @@ import com.izuuhh.mira.ui.player.NowPlaying
 import com.izuuhh.mira.ui.player.PlayerBar
 import com.izuuhh.mira.ui.screens.MusicScreen
 import com.izuuhh.mira.ui.screens.SettingsScreen
+import com.izuuhh.mira.ui.theme.LocalCardStyle
 import com.izuuhh.mira.ui.theme.Mira
 
 @Composable
@@ -83,9 +84,17 @@ fun MiraApp(vm: MiraViewModel, onEvent: (Event) -> Unit) {
                 }
             }
             Spacer(Modifier.height(8.dp))
-            PlayerBar(vm, onExpand = { showPlayer = true }, onDevices = { showDevices = true })
-            Spacer(Modifier.height(8.dp))
-            NavBar(vm)
+            if (LocalCardStyle.current == 2) {
+                // Attached: the player and the navigation share one block with no gap between them.
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(corner(28.dp))).background(m.elevated)) {
+                    PlayerBar(vm, onExpand = { showPlayer = true }, onDevices = { showDevices = true })
+                    NavBar(vm)
+                }
+            } else {
+                PlayerBar(vm, onExpand = { showPlayer = true }, onDevices = { showDevices = true })
+                Spacer(Modifier.height(8.dp))
+                NavBar(vm)
+            }
         }
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(bottom = 190.dp))
         AnimatedVisibility(

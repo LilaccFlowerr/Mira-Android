@@ -1,5 +1,6 @@
 package com.izuuhh.mira.ui.screens
 
+import com.izuuhh.mira.ui.theme.miraSurface
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -56,7 +57,7 @@ private fun LikedCard(vm: MiraViewModel) {
     val m = Mira.colors
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Box(
-            Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(corner(24.dp))).background(m.container).clickable { vm.navigate(Page.Liked) },
+            Modifier.fillMaxWidth().aspectRatio(1f).miraSurface(RoundedCornerShape(corner(24.dp)), m.container).clickable { vm.navigate(Page.Liked) },
             contentAlignment = Alignment.Center,
         ) {
             ShapeArt(3, m.primary.copy(alpha = 0.25f), 150.dp)

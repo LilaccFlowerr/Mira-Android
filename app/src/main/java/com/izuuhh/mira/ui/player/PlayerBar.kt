@@ -1,5 +1,6 @@
 package com.izuuhh.mira.ui.player
 
+import com.izuuhh.mira.ui.theme.miraSurface
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -35,7 +36,7 @@ fun PlayerBar(vm: MiraViewModel, onExpand: () -> Unit, onDevices: () -> Unit) {
     val m = Mira.colors
     val pb = vm.playback
     val clock = rememberPlaybackClock(pb?.playing == true)
-    Box(Modifier.fillMaxWidth().height(90.dp).clip(RoundedCornerShape(corner(20.dp))).background(m.elevated).clickable(onClick = onExpand)) {
+    Box(Modifier.fillMaxWidth().height(90.dp).miraSurface(RoundedCornerShape(corner(20.dp)), m.elevated, docked = true).clickable(onClick = onExpand)) {
         Row(Modifier.fillMaxSize().padding(start = 10.dp, end = 6.dp, top = 8.dp, bottom = 26.dp), verticalAlignment = Alignment.CenterVertically) {
             Cover(pb?.track?.cover, 52.dp, radius = 14.dp)
             Spacer(Modifier.width(10.dp))
