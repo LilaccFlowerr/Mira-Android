@@ -1,6 +1,6 @@
 package com.izuuhh.mira.ui.player
 
-import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
@@ -62,21 +62,24 @@ fun NowPlaying(vm: MiraViewModel, onClose: () -> Unit, onDevices: () -> Unit) {
     val coverScale by animateFloatAsState(if (pb?.playing == false) 0.88f else 1f, spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessLow), label = "cover")
 
     // Drag down to close: the screen follows the finger, then either slides away or springs back.
-    val scope = rememberCoroutineScope()
-    val drag = remember { Animatable(0f) }
+    // The distance is a plain state updated on every move; an animation only runs once the finger lifts.
+    var dragY by remember { mutableFloatStateOf(0f) }
     var screenHeight by remember { mutableFloatStateOf(0f) }
-    val dragState = rememberDraggableState { delta -> scope.launch { drag.snapTo((drag.value + delta).coerceAtLeast(0f)) } }
+    val dragState = rememberDraggableState { delta -> dragY = (dragY + delta).coerceAtLeast(0f) }
 
     Box(
         Modifier.fillMaxSize().onSizeChanged { screenHeight = it.height.toFloat() }
-            .graphicsLayer { translationY = drag.value }
+            .graphicsLayer { translationY = dragY }
             .draggable(
                 dragState, Orientation.Vertical,
                 onDragStopped = { velocity ->
-                    if (drag.value > screenHeight * 0.22f || velocity > 1400f) {
-                        drag.animateTo(screenHeight, tween(180))
+                    val close = dragY > screenHeight * 0.22f || velocity > 1400f
+                    if (close) {
+                        animate(dragY, screenHeight, animationSpec = tween(180)) { value, _ -> dragY = value }
                         onClose()
-                    } else drag.animateTo(0f, spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMedium))
+                    } else {
+                        animate(dragY, 0f, animationSpec = spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMedium)) { value, _ -> dragY = value.coerceAtLeast(0f) }
+                    }
                 },
             )
             .background(m.base),
