@@ -120,7 +120,6 @@ fun TrackListScreen(vm: MiraViewModel) {
                 if (vm.items.isNotEmpty()) item(key = "songs-title") { SectionTitle("Songs", Modifier.padding(top = 10.dp, bottom = 4.dp)) }
             }
         }
-        if (vm.busy && vm.items.isEmpty()) item(key = "loading") { Loading() }
         if (!vm.busy && vm.loadError && vm.items.isEmpty()) item(key = "error") {
             StatusCard("Could not load songs", vm.info, onRetry = { vm.retry() }, error = true)
         }
@@ -154,10 +153,10 @@ fun TrackListScreen(vm: MiraViewModel) {
         }
         if (vm.hasMore && shown.isNotEmpty()) item(key = "more") {
             Box(Modifier.fillMaxWidth().padding(top = 10.dp), Alignment.Center) {
-                if (vm.busy) LoadingMore() else FilledTonalButton(
-                    onClick = { vm.loadMore() },
+                FilledTonalButton(
+                    onClick = { vm.loadMore() }, enabled = !vm.busy,
                     colors = ButtonDefaults.filledTonalButtonColors(containerColor = m.container, contentColor = m.primary),
-                ) { Icon(Icons.Rounded.Add, null); Spacer(Modifier.width(6.dp)); Text("Load more") }
+                ) { Icon(Icons.Rounded.Add, null); Spacer(Modifier.width(6.dp)); Text(if (vm.busy) "Loading…" else "Load more") }
             }
         }
         if (shown.isNotEmpty()) item(key = "footer") {
@@ -165,9 +164,6 @@ fun TrackListScreen(vm: MiraViewModel) {
         }
     }
 }
-
-@Composable
-private fun LoadingMore() = com.izuuhh.mira.ui.components.LoadingIndicator(size = 36.dp)
 
 @Composable
 private fun FilterField(value: String, onChange: (String) -> Unit, placeholder: String) {

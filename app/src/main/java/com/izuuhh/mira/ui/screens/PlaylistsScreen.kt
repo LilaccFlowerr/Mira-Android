@@ -32,7 +32,6 @@ import com.izuuhh.mira.ui.theme.Mira
 fun PlaylistsScreen(vm: MiraViewModel) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(14.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item { SectionTitle("Your playlists") }
-        if (vm.busy && vm.playlists.isEmpty()) item { Loading() }
         if (!vm.busy && vm.playlists.isEmpty() && vm.loadError) item { StatusCard("Could not load playlists", vm.info, onRetry = { vm.retry() }, error = true) }
         playlistGrid(vm, limit = Int.MAX_VALUE)
         item { Spacer(Modifier.height(4.dp)) }

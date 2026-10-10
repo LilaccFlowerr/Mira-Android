@@ -14,8 +14,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.graphics.shapes.CornerRounding
 import androidx.graphics.shapes.Cubic
 import androidx.graphics.shapes.RoundedPolygon
-import androidx.graphics.shapes.circle
-import androidx.graphics.shapes.rectangle
 import androidx.graphics.shapes.star
 
 /** The soft Material 3 Expressive shapes used as decoration. */
@@ -30,36 +28,6 @@ object Shapes {
             RoundedPolygon(3, rounding = CornerRounding(0.28f)),
         )
     }
-}
-
-/** The shapes the loading indicator cycles through, each fitted into the unit square. */
-val LoaderShapes: List<RoundedPolygon> by lazy {
-    listOf(
-        RoundedPolygon.circle(),
-        RoundedPolygon.rectangle(1.7f, 1.7f, rounding = CornerRounding(0.35f)),
-        RoundedPolygon.rectangle(2f, 1.3f, rounding = CornerRounding(0.65f)),
-        RoundedPolygon.rectangle(2.2f, 1.1f, rounding = CornerRounding(0.55f)),
-        RoundedPolygon(3, rounding = CornerRounding(0.25f)),
-        RoundedPolygon(4, rounding = CornerRounding(0.2f)),
-        RoundedPolygon(5, rounding = CornerRounding(0.2f)),
-        RoundedPolygon.star(6, innerRadius = 0.72f, rounding = CornerRounding(0.1f)),
-        RoundedPolygon.star(8, innerRadius = 0.8f, rounding = CornerRounding(0.1f)),
-        RoundedPolygon.star(10, innerRadius = 0.78f, rounding = CornerRounding(0.1f)),
-        RoundedPolygon.star(4, innerRadius = 0.74f, rounding = CornerRounding(0.45f)),
-        RoundedPolygon.star(6, innerRadius = 0.8f, rounding = CornerRounding(0.5f)),
-        RoundedPolygon.star(4, innerRadius = 0.45f, rounding = CornerRounding(0.3f)),
-        RoundedPolygon.star(10, innerRadius = 0.82f, rounding = CornerRounding(0.35f)),
-        RoundedPolygon.star(8, innerRadius = 0.72f, rounding = CornerRounding(0.5f)),
-        RoundedPolygon.star(7, innerRadius = 0.86f, rounding = CornerRounding(0.6f)),
-    ).map { it.normalized() }
-}
-
-/** Scales a path built in the unit square to [px] pixels. */
-fun Path.scaled(px: Float): Path = Path().also { out ->
-    out.addPath(this)
-    val m = Matrix()
-    m.scale(px, px)
-    out.transform(m)
 }
 
 fun List<Cubic>.toPath(): Path = Path().apply {

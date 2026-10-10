@@ -22,7 +22,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.izuuhh.mira.MiraViewModel
 import com.izuuhh.mira.data.LyricsState
-import com.izuuhh.mira.ui.components.LoadingIndicator
 import com.izuuhh.mira.ui.theme.Mira
 import com.izuuhh.mira.ui.theme.corner
 
@@ -33,7 +32,7 @@ fun LyricsPanel(vm: MiraViewModel, positionMs: () -> Long, modifier: Modifier = 
     val state = vm.lyrics
     Box(modifier, Alignment.Center) {
         when (state) {
-            LyricsState.Idle, LyricsState.Loading -> LoadingIndicator()
+            LyricsState.Idle, LyricsState.Loading -> Message("Loading lyrics…")
             LyricsState.NotFound -> Message("No lyrics found for this song.")
             LyricsState.Failed -> Message("Could not reach the lyrics service. Check your connection.")
             is LyricsState.Found -> {

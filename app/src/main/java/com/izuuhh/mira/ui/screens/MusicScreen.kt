@@ -18,7 +18,6 @@ import androidx.compose.ui.unit.sp
 import com.izuuhh.mira.MiraViewModel
 import com.izuuhh.mira.ui.theme.corner
 import com.izuuhh.mira.Page
-import com.izuuhh.mira.ui.components.LoadingIndicator
 import com.izuuhh.mira.ui.components.ShapeArt
 import com.izuuhh.mira.ui.theme.Mira
 
@@ -35,11 +34,6 @@ fun MusicScreen(vm: MiraViewModel, openPlayer: () -> Unit, goSettings: () -> Uni
 @Composable
 fun SectionTitle(text: String, modifier: Modifier = Modifier) {
     Text(text, color = Mira.colors.text, fontSize = 21.sp, fontWeight = FontWeight.Bold, modifier = modifier)
-}
-
-@Composable
-fun Loading(modifier: Modifier = Modifier) {
-    Box(modifier.fillMaxWidth().padding(vertical = 24.dp), Alignment.Center) { LoadingIndicator() }
 }
 
 /** Shown when a list is empty or could not be loaded. */
