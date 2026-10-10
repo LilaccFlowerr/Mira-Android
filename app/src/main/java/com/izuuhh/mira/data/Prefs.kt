@@ -52,4 +52,8 @@ class Prefs(context: Context) {
     var lyrics: Boolean
         get() = sp.getBoolean("lyrics", true)
         set(v) = sp.edit().putBoolean("lyrics", v).apply()
+    /** Pause Spotify and drop the App Remote connection when Mira is swiped away. */
+    var closeSpotify: Boolean
+        get() = sp.getBoolean("closeSpotify", false)
+        set(v) = sp.edit().putBoolean("closeSpotify", v).apply()
 }

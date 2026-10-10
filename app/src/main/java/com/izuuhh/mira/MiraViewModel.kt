@@ -31,8 +31,9 @@ class MiraViewModel(app: Application) : AndroidViewModel(app) {
     private val remote = RemotePlayer(app) { refreshSoon() }
     private var remoteFailed = false
 
-    /** The Spotify consent screen can only open from an Activity, so MainActivity lends itself here. */
-    var host: android.app.Activity? = null
+    /** App Remote connects with the Activity as context, held weakly so the ViewModel cannot leak it. */
+    private var hostRef = java.lang.ref.WeakReference<android.app.Activity>(null)
+    fun attachHost(activity: android.app.Activity?) { hostRef = java.lang.ref.WeakReference(activity) }
 
     var connected by mutableStateOf(auth.hasSession); private set
     var authMessage by mutableStateOf(""); private set
@@ -48,16 +49,6 @@ class MiraViewModel(app: Application) : AndroidViewModel(app) {
     var playback by mutableStateOf<Playback?>(null); private set
     var deviceId by mutableStateOf(""); private set
     var searchTerm by mutableStateOf("")
-    var themeMode by mutableIntStateOf(prefs.themeMode); private set
-    var hue by mutableIntStateOf(prefs.hue); private set
-    var dynamicColor by mutableStateOf(prefs.dynamicColor); private set
-    var amoled by mutableStateOf(prefs.amoled); private set
-    var corners by mutableIntStateOf(prefs.corners); private set
-    var font by mutableIntStateOf(prefs.font); private set
-    var textSize by mutableIntStateOf(prefs.textSize); private set
-    var wavy by mutableStateOf(prefs.wavy); private set
-    var blurBackground by mutableStateOf(prefs.blurBackground); private set
-    var showGenres by mutableStateOf(prefs.showGenres); private set
     var online by mutableStateOf(true); private set
     var lyricsEnabled by mutableStateOf(prefs.lyrics); private set
     var lyrics by mutableStateOf<LyricsState>(LyricsState.Idle); private set
@@ -94,6 +85,8 @@ class MiraViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     init {
+        CloseHook.pause = { remote.player?.pause() }
+        CloseHook.disconnect = { remote.disconnect() }
         // The volume buttons on the phone move the slider too.
         androidx.core.content.ContextCompat.registerReceiver(
             app,
@@ -401,7 +394,7 @@ class MiraViewModel(app: Application) : AndroidViewModel(app) {
      */
     private fun connectRemote(userAction: Boolean = false, then: ((Boolean) -> Unit)? = null) {
         if (!remote.installed || prefs.clientId.isEmpty()) { remoteFailed = true; then?.invoke(false); return }
-        remote.connect(host ?: getApplication(), prefs.clientId, false) { error ->
+        remote.connect(hostRef.get() ?: getApplication(), prefs.clientId, false) { error ->
             when {
                 error == null -> { remoteFailed = false; refreshPlayer(true); then?.invoke(true) }
                 RemotePlayer.needsConsent(error) && userAction -> {
@@ -586,16 +579,8 @@ class MiraViewModel(app: Application) : AndroidViewModel(app) {
 
     // --- Settings ------------------------------------------------------------------------------
 
-    fun updateThemeMode(v: Int) { themeMode = v; prefs.themeMode = v }
-    fun updateHue(v: Int) { hue = v; prefs.hue = v; if (dynamicColor) updateDynamic(false) }
-    fun updateDynamic(v: Boolean) { dynamicColor = v; prefs.dynamicColor = v }
-    fun updateAmoled(v: Boolean) { amoled = v; prefs.amoled = v }
-    fun updateCorners(v: Int) { corners = v; prefs.corners = v }
-    fun updateFont(v: Int) { font = v; prefs.font = v }
-    fun updateTextSize(v: Int) { textSize = v; prefs.textSize = v }
-    fun updateWavy(v: Boolean) { wavy = v; prefs.wavy = v }
-    fun updateBlurBackground(v: Boolean) { blurBackground = v; prefs.blurBackground = v }
-    fun updateShowGenres(v: Boolean) { showGenres = v; prefs.showGenres = v }
+    var closeSpotify by mutableStateOf(prefs.closeSpotify); private set
+    fun updateCloseSpotify(v: Boolean) { closeSpotify = v; prefs.closeSpotify = v }
     fun updateLyrics(v: Boolean) { lyricsEnabled = v; prefs.lyrics = v; if (!v) { lyrics = LyricsState.Idle; lyricsUri = null } }
 
     /** Loads the lyrics of [track] once; asking again for the same song does nothing. */

@@ -21,6 +21,7 @@ import com.spotify.sdk.android.auth.AuthorizationResponse
 
 class MainActivity : ComponentActivity() {
     private val vm: MiraViewModel by viewModels()
+    private val settings: SettingsViewModel by viewModels()
 
     private val consent = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         val response = AuthorizationClient.getResponse(result.resultCode, result.data)
@@ -30,9 +31,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         handle(intent)
-        vm.host = this
+        vm.attachHost(this)
+        startService(Intent(this, CloseService::class.java))
         setContent {
-            val dark = when (vm.themeMode) { 1 -> false; 2 -> true; else -> isSystemInDarkTheme() }
+            val dark = when (settings.themeMode) { 1 -> false; 2 -> true; else -> isSystemInDarkTheme() }
             // Status and navigation bar icons follow the theme.
             DisposableEffect(dark) {
                 val bar = if (dark) SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
@@ -41,17 +43,12 @@ class MainActivity : ComponentActivity() {
                 onDispose {}
             }
             MiraTheme(
-                dark = dark, hue = vm.hue, amoled = vm.amoled, dynamic = vm.dynamicColor,
-                corners = vm.corners, font = vm.font, textSize = vm.textSize, wavy = vm.wavy,
+                dark = dark, hue = settings.hue, amoled = settings.amoled, dynamic = settings.dynamicColor,
+                corners = settings.corners, font = settings.font, textSize = settings.textSize, wavy = settings.wavy,
             ) {
                 MiraApp(vm, onEvent = ::onEvent)
             }
         }
-    }
-
-    override fun onDestroy() {
-        if (vm.host === this) vm.host = null
-        super.onDestroy()
     }
 
     override fun onNewIntent(intent: Intent) {

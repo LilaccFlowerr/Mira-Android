@@ -33,6 +33,7 @@
                 <data android:scheme="mira" android:host="callback" />
             </intent-filter>
         </activity>
+        <service android:name=".CloseService" android:exported="false" android:stopWithTask="false" />
     </application>
 
 </manifest>

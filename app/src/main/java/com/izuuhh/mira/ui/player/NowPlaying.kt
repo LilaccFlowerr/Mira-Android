@@ -1,5 +1,7 @@
 package com.izuuhh.mira.ui.player
 
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.izuuhh.mira.SettingsViewModel
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -42,6 +44,7 @@ import com.izuuhh.mira.ui.theme.Mira
 
 @Composable
 fun NowPlaying(vm: MiraViewModel, onClose: () -> Unit, onDevices: () -> Unit) {
+    val settings: SettingsViewModel = viewModel()
     val m = Mira.colors
     val pb = vm.playback
     val clock = rememberPlaybackClock(pb?.playing == true)
@@ -52,7 +55,7 @@ fun NowPlaying(vm: MiraViewModel, onClose: () -> Unit, onDevices: () -> Unit) {
     Box(Modifier.fillMaxSize().background(m.base)) {
     // Blurred album art behind everything; a scrim keeps the text readable in both themes.
     val cover = pb?.track?.cover
-    if (vm.blurBackground && cover != null && android.os.Build.VERSION.SDK_INT >= 31) {
+    if (settings.blurBackground && cover != null && android.os.Build.VERSION.SDK_INT >= 31) {
         AsyncImage(
             cover, null, Modifier.fillMaxSize().blur(70.dp, BlurredEdgeTreatment.Unbounded).graphicsLayer { scaleX = 1.4f; scaleY = 1.4f },
             contentScale = ContentScale.Crop,

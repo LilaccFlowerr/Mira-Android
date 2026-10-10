@@ -1,5 +1,7 @@
 package com.izuuhh.mira.ui.screens
 
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.izuuhh.mira.SettingsViewModel
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -40,10 +42,11 @@ private val Genres = listOf(
 
 @Composable
 fun HomeScreen(vm: MiraViewModel, openPlayer: () -> Unit, goSettings: () -> Unit) {
+    val settings: SettingsViewModel = viewModel()
     val m = Mira.colors
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(14.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
         item { Hero(vm, openPlayer, goSettings) }
-        if (vm.showGenres) item {
+        if (settings.showGenres) item {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 SectionTitle("Browse by genre")
                 Genres.chunked(2).forEach { row ->
