@@ -16,7 +16,7 @@ import com.spotify.protocol.types.PlayerState
  * Spotify App Remote: talks to the Spotify app in the background, so Spotify never has to be opened
  * first. It is used for playback commands; browsing and metadata stay on the Web API.
  */
-class RemotePlayer(private val context: Context, private val onChange: () -> Unit) {
+class RemotePlayer(private val context: Context, private val onChange: (PlayerState) -> Unit) {
     private var remote: SpotifyAppRemote? = null
     private var subscription: Subscription<PlayerState>? = null
     private class Waiter(val showAuth: Boolean, val done: (Throwable?) -> Unit)
@@ -56,7 +56,7 @@ class RemotePlayer(private val context: Context, private val onChange: () -> Uni
                 Log.i(TAG, "App Remote connected")
                 remote = r
                 subscription?.cancel()
-                subscription = r.playerApi.subscribeToPlayerState().setEventCallback { onChange() }
+                subscription = r.playerApi.subscribeToPlayerState().setEventCallback { onChange(it) }
                 finish(null)
             }
 

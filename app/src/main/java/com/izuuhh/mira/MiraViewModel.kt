@@ -28,7 +28,7 @@ class MiraViewModel(app: Application) : AndroidViewModel(app) {
     private val http = OkHttpClient.Builder().callTimeout(20, TimeUnit.SECONDS).build()
     private val auth = Auth(http, prefs, TokenStore(app))
     private val api = SpotifyApi(http, auth)
-    private val remote = RemotePlayer(app) { refreshSoon() }
+    private val remote = RemotePlayer(app) { onRemoteState(it) }
     private var remoteFailed = false
 
     /** App Remote connects with the Activity as context, held weakly so the ViewModel cannot leak it. */
@@ -333,11 +333,28 @@ class MiraViewModel(app: Application) : AndroidViewModel(app) {
         if (!connected) return
         viewModelScope.launch {
             when (val r = api.call("GET", "/me/player")) {
-                is ApiResult.Ok -> playback = SpotifyApi.parsePlayback(r.json)
+                is ApiResult.Ok -> applyWebPlayback(SpotifyApi.parsePlayback(r.json))
                 is ApiResult.Err -> if (r.code == 401) sessionExpired(r.message)
             }
             if (includeDevices) refreshDevices()
         }
+    }
+
+    private var remoteStateAt = 0L
+
+    /**
+     * The Web API lags a few seconds behind the Spotify app and then still names the song that just ended.
+     * Shortly after App Remote reported a state, keep its song and position and only take the device details.
+     */
+    private fun applyWebPlayback(web: Playback?) {
+        val cur = playback
+        val fresh = SystemClock.elapsedRealtime() - remoteStateAt < 5000
+        if (web != null && cur != null && fresh && web.track.uri != cur.track.uri) {
+            playback = cur.copy(
+                deviceId = web.deviceId, deviceName = web.deviceName, volume = web.volume,
+                supportsVolume = web.supportsVolume, restricted = web.restricted, disallows = web.disallows,
+            )
+        } else playback = web
     }
 
     private fun sessionExpired(message: String) {
@@ -368,6 +385,34 @@ class MiraViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * The Spotify app pushes its state over App Remote, so there is no need to ask the Web API what is playing.
+     * The Web API also lags behind: asked right after a song change it still names the old song, so a new song
+     * is built from the App Remote state and the Web API only fills in the rest a moment later.
+     */
+    private fun onRemoteState(s: com.spotify.protocol.types.PlayerState) {
+        val cur = playback
+        val t = s.track
+        val now = SystemClock.elapsedRealtime()
+        remoteStateAt = now
+        val repeat = when (s.playbackOptions.repeatMode) { Repeat.ONE -> "track"; Repeat.ALL -> "context"; else -> "off" }
+        if (cur == null || t == null || !t.uri.startsWith("spotify:track:")) {
+            // Nothing to build on, or an ad/episode: let the Web API describe it, giving it time to catch up.
+            refreshSoon()
+            return
+        }
+        val track = if (cur.track.uri == t.uri) cur.track else {
+            val id = t.uri.substringAfterLast(':')
+            Track(
+                id = id, name = t.name, subtitle = t.artists.joinToString(", ") { it.name }, album = t.album?.name.orEmpty(),
+                uri = t.uri, cover = t.imageUri?.raw?.substringAfterLast(':')?.takeIf { it.isNotEmpty() }?.let { "https://i.scdn.co/image/$it" },
+                type = "track", durationMs = t.duration, url = "https://open.spotify.com/track/$id",
+            )
+        }
+        playback = cur.copy(track = track, playing = !s.isPaused, progressMs = s.playbackPosition, readAt = now, shuffle = s.playbackOptions.isShuffling, repeat = repeat)
+        if (cur.track.uri != t.uri) refreshSoon()
+    }
+
     private fun refreshSoon() = viewModelScope.launch { delay(800); refreshPlayer(false) }
 
     private val controlDevice get() = playback?.deviceId?.takeIf { it.isNotEmpty() } ?: deviceId
@@ -379,7 +424,8 @@ class MiraViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun send(method: String, path: String, body: JSONObject? = null, after: (() -> Unit)? = null) = viewModelScope.launch {
         when (val r = api.call(method, path, body)) {
-            is ApiResult.Err -> events.trySend(Event.Message(r.message))
+            // On failure the screen already moved ahead of Spotify, so read the real state back.
+            is ApiResult.Err -> { events.trySend(Event.Message(r.message)); refreshSoon() }
             is ApiResult.Ok -> { after?.invoke(); refreshSoon() }
         }
     }
@@ -473,14 +519,20 @@ class MiraViewModel(app: Application) : AndroidViewModel(app) {
         if (valid.isEmpty()) return
         offset = minOf(offset, valid.size - 1)
         if (valid.size > 100) { valid = ArrayList(valid.subList(offset, minOf(valid.size, offset + 100))); offset = 0 }
-        if (viaRemote({ playFrom(uris, index) }) { p -> playList(p, valid.subList(offset, valid.size)) }) return
+        if (controlDevice.isEmpty() && viaRemote({ playFrom(uris, index) }) { p -> playList(p, valid.subList(offset, valid.size)) }) return
         startPlayback(JSONObject().put("uris", JSONArray(valid)).put("offset", JSONObject().put("position", offset)))
     }
 
     /** App Remote plays one item at a time: start the first and queue the next ones. */
     private fun playList(p: com.spotify.android.appremote.api.PlayerApi, tracks: List<String>) {
-        p.play(tracks.first())
-        tracks.drop(1).take(30).forEach { p.queue(it) }
+        p.play(tracks.first()).setResultCallback { queueInOrder(p, tracks.drop(1).take(30)) }
+    }
+
+    /** Queues one song at a time: requests sent together can reach Spotify in any order, which scrambled the queue. */
+    private fun queueInOrder(p: com.spotify.android.appremote.api.PlayerApi, uris: List<String>) {
+        val next = uris.firstOrNull() ?: return
+        val rest = uris.drop(1)
+        p.queue(next).setResultCallback { queueInOrder(p, rest) }.setErrorCallback { queueInOrder(p, rest) }
     }
 
     fun playInContext(context: String, uri: String) {
@@ -499,6 +551,10 @@ class MiraViewModel(app: Application) : AndroidViewModel(app) {
     fun playLiked(uris: List<String>, index: Int, shuffle: Boolean = false) {
         val order = if (shuffle) uris.shuffled() else uris.drop(index)
         val tracks = order.filter { it.matches(Regex("^spotify:track:[A-Za-z0-9]+$")) }
+        // Spotify keeps queued songs when a new one starts and App Remote cannot clear them, so queueing a list
+        // piles up old batches. Playing a collection by its URI uses Spotify's own order, not the order shown here.
+        // With a known device the Web API gets the exact list instead (up to 100 songs, as one fresh context).
+        if (controlDevice.isNotEmpty() && tracks.isNotEmpty()) { startPlayback(JSONObject().put("uris", JSONArray(tracks.take(100)))); return }
         if (tracks.isNotEmpty() && viaRemote({ playLiked(uris, index, shuffle) }) { p -> playList(p, tracks) }) return
         if (needDevice { playLiked(uris, index, shuffle) }) return
         viewModelScope.launch {
@@ -516,11 +572,25 @@ class MiraViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun togglePlayback() { if (playback?.playing == true) command("pause") else play() }
+    fun togglePlayback() {
+        val p = playback
+        if (p?.playing == true) { command("pause"); return }
+        // Show "playing" at once; the refresh after the command corrects it if Spotify disagrees.
+        if (p != null && p.allows("resuming")) playback = p.copy(playing = true, readAt = SystemClock.elapsedRealtime())
+        play()
+    }
 
     fun command(cmd: String) {
         val needs = mapOf("pause" to "pausing", "next" to "skipping_next", "previous" to "skipping_prev")[cmd] ?: return
         if (playback?.allows(needs) == false) { events.trySend(Event.Message("Spotify does not allow this control right now.")); return }
+        // Update the screen first so the button answers at once instead of after Spotify's round trip.
+        playback?.let { cur ->
+            val now = SystemClock.elapsedRealtime()
+            when (cmd) {
+                "pause" -> playback = cur.copy(progressMs = cur.position(now), playing = false, readAt = now)
+                "previous" -> playback = cur.copy(progressMs = 0, readAt = now)
+            }
+        }
         remote.player?.let { p ->
             when (cmd) { "pause" -> p.pause(); "next" -> p.skipNext(); else -> p.skipPrevious() }
             refreshSoon(); return
