@@ -15,6 +15,9 @@ android {
         targetSdk = 37
         versionCode = 1
         versionName = "1.0"
+        // The Spotify auth library declares a redirect activity; sign-in goes through the Spotify app, so these are never used.
+        manifestPlaceholders["redirectSchemeName"] = "miraauth"
+        manifestPlaceholders["redirectHostName"] = "unused"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -48,6 +51,9 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.androidx.browser)
+    implementation(files("libs/spotify-app-remote-release-0.8.0.aar"))
+    implementation(files("libs/spotify-auth-release-2.1.0.aar"))
+    implementation("com.google.code.gson:gson:2.11.0")
     implementation(libs.okhttp)
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)

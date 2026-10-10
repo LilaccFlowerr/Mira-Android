@@ -14,25 +14,22 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
+import com.spotify.protocol.types.Repeat
 import okhttp3.OkHttpClient
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
-
-enum class Page { Home, Search, Liked, Playlists, Playlist, Settings }
-
-/** One-off things the UI has to do: open a URL, show a snackbar, wake the Spotify app. */
-sealed interface Event {
-    data class OpenBrowser(val uri: Uri) : Event
-    data class Message(val text: String) : Event
-    data object OpenSpotifyApp : Event
-}
 
 class MiraViewModel(app: Application) : AndroidViewModel(app) {
     val prefs = Prefs(app)
     private val http = OkHttpClient.Builder().callTimeout(20, TimeUnit.SECONDS).build()
     private val auth = Auth(http, prefs, TokenStore(app))
     private val api = SpotifyApi(http, auth)
+    private val remote = RemotePlayer(app) { refreshSoon() }
+    private var remoteFailed = false
+
+    /** The Spotify consent screen can only open from an Activity, so MainActivity lends itself here. */
+    var host: android.app.Activity? = null
 
     var connected by mutableStateOf(auth.hasSession); private set
     var authMessage by mutableStateOf(""); private set
@@ -75,6 +72,7 @@ class MiraViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun onCallback(uri: Uri) = viewModelScope.launch {
+        if (!signingIn) return@launch
         val error = auth.finishLogin(uri)
         signingIn = false
         if (error != null) { authMessage = error; connected = auth.hasSession; return@launch }
@@ -86,12 +84,15 @@ class MiraViewModel(app: Application) : AndroidViewModel(app) {
     fun logout() {
         auth.logout()
         pollJob?.cancel()
+        remote.disconnect()
         connected = false; signingIn = false; authMessage = "Not connected"
         items = emptyList(); playlists = emptyList(); devices = emptyList(); playback = null; deviceId = ""; userId = null
         page = Page.Settings
     }
 
     private fun onConnected() {
+        remoteFailed = false
+        connectRemote()
         loadPlaylists()
         refreshPlayer(true)
         pollJob?.cancel()
@@ -227,6 +228,48 @@ class MiraViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    // --- Spotify App Remote --------------------------------------------------------------------
+
+    private var consentRetry: ((Boolean) -> Unit)? = null
+
+    /**
+     * Connects to the Spotify app in the background; [then] runs afterwards with the result.
+     * With [userAction], a missing permission opens Spotify's "allow Mira" screen first.
+     */
+    private fun connectRemote(userAction: Boolean = false, then: ((Boolean) -> Unit)? = null) {
+        if (!remote.installed || prefs.clientId.isEmpty()) { remoteFailed = true; then?.invoke(false); return }
+        remote.connect(host ?: getApplication(), prefs.clientId, false) { error ->
+            when {
+                error == null -> { remoteFailed = false; refreshPlayer(true); then?.invoke(true) }
+                RemotePlayer.needsConsent(error) && userAction -> {
+                    consentRetry = then
+                    events.trySend(Event.RequestConsent(prefs.clientId))
+                }
+                RemotePlayer.needsConsent(error) -> then?.invoke(false)
+                else -> { remoteFailed = true; events.trySend(Event.Message(RemotePlayer.describe(error))); then?.invoke(false) }
+            }
+        }
+    }
+
+    /** Called when Spotify's permission screen closes. */
+    fun onConsentResult(granted: Boolean) {
+        val retry = consentRetry
+        consentRetry = null
+        if (!granted) { remoteFailed = true; retry?.invoke(false); return }
+        connectRemote(userAction = false) { ok -> if (!ok) remoteFailed = true; retry?.invoke(ok) }
+    }
+
+    /**
+     * Runs [action] through App Remote when it is available, connecting first if needed.
+     * Returns false when App Remote cannot be used, so the caller falls back to the Web API.
+     */
+    private fun viaRemote(retry: () -> Unit, action: (com.spotify.android.appremote.api.PlayerApi) -> Unit): Boolean {
+        remote.player?.let { action(it); refreshSoon(); return true }
+        if (remoteFailed || !remote.installed) return false
+        connectRemote(userAction = true) { retry() }
+        return true
+    }
+
     // --- Controls ------------------------------------------------------------------------------
 
     /** Phone without an active Spotify device: wake the Spotify app, then run [retry] once it shows up. */
@@ -242,6 +285,8 @@ class MiraViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun openSpotifyApp() {
+        remoteFailed = false
+        connectRemote(userAction = true)
         events.trySend(Event.OpenSpotifyApp)
         viewModelScope.launch { for (ms in listOf(4000L, 5000L)) { delay(ms); refreshPlayer(true) } }
     }
@@ -252,7 +297,8 @@ class MiraViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun play(uri: String? = null) {
-        if (needDevice { play(uri) }) return
+        if (uri != null && !uri.matches(Regex("^spotify:(track|playlist):[A-Za-z0-9]+$"))) return
+        if (viaRemote({ play(uri) }) { p -> if (uri == null) p.resume() else p.play(uri) }) return
         val b = JSONObject()
         if (uri != null) {
             if (!uri.matches(Regex("^spotify:(track|playlist):[A-Za-z0-9]+$"))) return
@@ -271,11 +317,23 @@ class MiraViewModel(app: Application) : AndroidViewModel(app) {
         if (valid.isEmpty()) return
         offset = minOf(offset, valid.size - 1)
         if (valid.size > 100) { valid = ArrayList(valid.subList(offset, minOf(valid.size, offset + 100))); offset = 0 }
+        if (viaRemote({ playFrom(uris, index) }) { p -> playList(p, valid.subList(offset, valid.size)) }) return
         startPlayback(JSONObject().put("uris", JSONArray(valid)).put("offset", JSONObject().put("position", offset)))
+    }
+
+    /** App Remote plays one item at a time: start the first and queue the next ones. */
+    private fun playList(p: com.spotify.android.appremote.api.PlayerApi, tracks: List<String>) {
+        p.play(tracks.first())
+        tracks.drop(1).take(30).forEach { p.queue(it) }
     }
 
     fun playInContext(context: String, uri: String) {
         if (!context.matches(Regex("^spotify:playlist:[A-Za-z0-9]+$"))) return
+        val index = items.indexOfFirst { it.uri == uri }
+        if (viaRemote({ playInContext(context, uri) }) { p ->
+                val start = p.play(context)
+                if (index >= 0) start.setResultCallback { p.skipToIndex(context, index) }
+            }) return
         val b = JSONObject().put("context_uri", context)
         if (uri.matches(Regex("^spotify:track:[A-Za-z0-9]+$"))) b.put("offset", JSONObject().put("uri", uri))
         startPlayback(b)
@@ -283,6 +341,9 @@ class MiraViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Plays the whole Liked songs collection from a track so following tracks keep playing. */
     fun playLiked(uris: List<String>, index: Int, shuffle: Boolean = false) {
+        val order = if (shuffle) uris.shuffled() else uris.drop(index)
+        val tracks = order.filter { it.matches(Regex("^spotify:track:[A-Za-z0-9]+$")) }
+        if (tracks.isNotEmpty() && viaRemote({ playLiked(uris, index, shuffle) }) { p -> playList(p, tracks) }) return
         if (needDevice { playLiked(uris, index, shuffle) }) return
         viewModelScope.launch {
             val id = userId ?: (api.call("GET", "/me") as? ApiResult.Ok)?.json?.optString("id")
@@ -304,31 +365,38 @@ class MiraViewModel(app: Application) : AndroidViewModel(app) {
     fun command(cmd: String) {
         val needs = mapOf("pause" to "pausing", "next" to "skipping_next", "previous" to "skipping_prev")[cmd] ?: return
         if (playback?.allows(needs) == false) { events.trySend(Event.Message("Spotify does not allow this control right now.")); return }
+        remote.player?.let { p ->
+            when (cmd) { "pause" -> p.pause(); "next" -> p.skipNext(); else -> p.skipPrevious() }
+            refreshSoon(); return
+        }
         if (controlDevice.isEmpty()) { events.trySend(Event.Message("Choose a Spotify device first.")); return }
         send(if (cmd == "pause") "PUT" else "POST", target("/me/player/$cmd"))
     }
 
     fun seek(ms: Long) {
         val p = playback ?: return
-        if (controlDevice.isEmpty() || !p.allows("seeking")) return
+        if ((controlDevice.isEmpty() && remote.player == null) || !p.allows("seeking")) return
         val clamped = ms.coerceIn(0, if (p.track.durationMs > 0) p.track.durationMs else Long.MAX_VALUE)
         playback = p.copy(progressMs = clamped, readAt = SystemClock.elapsedRealtime())
+        remote.player?.let { it.seekTo(clamped); refreshSoon(); return }
         send("PUT", target("/me/player/seek", "position_ms" to clamped.toString()))
     }
 
     fun setShuffle(on: Boolean) {
         val p = playback ?: return
-        if (controlDevice.isEmpty() || !p.allows("toggling_shuffle")) return
+        if ((controlDevice.isEmpty() && remote.player == null) || !p.allows("toggling_shuffle")) return
         playback = p.copy(shuffle = on)
+        remote.player?.let { it.setShuffle(on); refreshSoon(); return }
         send("PUT", target("/me/player/shuffle", "state" to on.toString()))
     }
 
     fun cycleRepeat() {
         val p = playback ?: return
         val mode = when (p.repeat) { "off" -> "context"; "context" -> "track"; else -> "off" }
-        if (controlDevice.isEmpty()) return
+        if (controlDevice.isEmpty() && remote.player == null) return
         if (mode != "off" && !p.allows(if (mode == "track") "toggling_repeat_track" else "toggling_repeat_context")) return
         playback = p.copy(repeat = mode)
+        remote.player?.let { it.setRepeat(when (mode) { "track" -> Repeat.ONE; "context" -> Repeat.ALL; else -> Repeat.OFF }); refreshSoon(); return }
         send("PUT", target("/me/player/repeat", "state" to mode))
     }
 
